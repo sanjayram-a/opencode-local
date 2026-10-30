@@ -26,7 +26,13 @@ android {
     }
 
     // proot ships as lib*.so files and must be extracted to nativeLibraryDir to be exec'd.
-    packaging { jniLibs { useLegacyPackaging = true } }
+    packaging {
+        jniLibs {
+            useLegacyPackaging = true
+            // Prebuilt, already-stripped, patchelf-edited binaries: do not let AGP strip them again.
+            keepDebugSymbols += listOf("**/libproot.so", "**/libproot-loader.so", "**/libtalloc.so", "**/libandroid-shmem.so")
+        }
+    }
 
     // Keep the rootfs uncompressed in the APK so it can be streamed through zstd directly.
     androidResources { noCompress += "zst" }
