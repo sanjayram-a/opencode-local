@@ -1,0 +1,12 @@
+.superpowers/
+.dart_tool/
+build/
+.gradle/
+local.properties
+*.iml
+.idea/
+out/
+*.tar.zst
+native/proot/work/
+rootfs/work/
+app/android/app/src/main/assets/rootfs/
