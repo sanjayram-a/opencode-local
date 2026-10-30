@@ -61,6 +61,7 @@ class ServerSupervisor(
                 listOf("/usr/local/bin/opencode", "serve", "--hostname", "127.0.0.1", "--port", port.toString()),
             )
             log.add("[supervisor] starting on port $port" + if (noSeccomp) " (PROOT_NO_SECCOMP=1)" else "")
+            val startedAt = clock.now()
             val proc = spawner.spawn(argv, env, paths.filesDir)
             val reader = startPump(proc)
 
@@ -71,7 +72,7 @@ class ServerSupervisor(
                 if (probe(port, password)) {
                     current = proc
                     pump = reader
-                    log.add("[supervisor] healthy on port $port")
+                    log.add("[supervisor] healthy on port $port after ${clock.now() - startedAt} ms")
                     return ServerInfo(port, password)
                 }
                 clock.sleep(delay)

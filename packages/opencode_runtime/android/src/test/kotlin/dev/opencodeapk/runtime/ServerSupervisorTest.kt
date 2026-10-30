@@ -134,6 +134,16 @@ internal class ServerSupervisorTest {
     }
 
     @Test
+    fun logsTimeToHealthy() {
+        val clock = FakeClock()
+        val sup = supervisor(FakeSpawner { FakeProc("", clock, exitAt = null) }, clock, healthyAfter = 700)
+        sup.start(emptyMap())
+        assertTrue(Regex("""healthy on port 4100 after \d+ ms""").containsMatchIn(sup.log.tail()), sup.log.tail())
+        val ms = Regex("""after (\d+) ms""").find(sup.log.tail())!!.groupValues[1].toLong()
+        assertTrue(ms in 700..1500, "ms=$ms")
+    }
+
+    @Test
     fun stopDestroysRunningServer() {
         val clock = FakeClock()
         val procs = mutableListOf<FakeProc>()
