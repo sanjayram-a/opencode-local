@@ -177,6 +177,60 @@ internal class RootfsInstallerTest {
     }
 
     @Test
+    fun rejectsHardlinkThroughSymlink() {
+        val data = tar(E.Sym("d", "../.."), E.Hard("h", "d/shared_prefs/x.xml"), manifest("1"))
+        assertFailsWith<SecurityException> { installer().install({ ByteArrayInputStream(data) }, "1") {} }
+        assertTrue(ops.hardlinks.isEmpty())
+        assertFalse(paths.rootfs.exists())
+    }
+
+    @Test
+    fun rejectsDirectoryOnTopOfSymlink() {
+        val data = tar(E.Sym("a", "../.."), E.Dir("a", 0b111_111_111), manifest("1"))
+        assertFailsWith<SecurityException> { installer().install({ ByteArrayInputStream(data) }, "1") {} }
+        assertFalse(ops.modes.values.contains(0b111_111_111))
+    }
+
+    @Test
+    fun resumeOverwritesReadOnlyFileWrittenBeforeKill() {
+        // State after a kill between writing entry "b" (mode 0444) and recording progress for it.
+        paths.rootfsNew.mkdirs()
+        paths.progressVersionFile.writeText("1")
+        paths.progressFile.writeText("1")
+        File(paths.rootfsNew, "a").writeText("1")
+        File(paths.rootfsNew, "b").apply { writeText("partial"); setWritable(false) }
+
+        val data = tar(E.Reg("a", "1"), E.Reg("b", "2", mode = 0b100_100_100), manifest("1"))
+        installer().install({ ByteArrayInputStream(data) }, "1") {}
+
+        assertEquals("2", File(paths.rootfs, "b").readText())
+    }
+
+    @Test
+    fun concurrentEnsureInstalledExtractsOnce() {
+        val data = tar(E.Reg("a", "1"), E.Reg("b", "2"), manifest("1"))
+        val opens = java.util.concurrent.atomic.AtomicInteger()
+        val release = java.util.concurrent.CountDownLatch(1)
+        val open = {
+            opens.incrementAndGet()
+            release.await(5, java.util.concurrent.TimeUnit.SECONDS) // hold the first install open
+            ByteArrayInputStream(data)
+        }
+        val errors = java.util.Collections.synchronizedList(mutableListOf<Throwable>())
+        val threads = List(2) {
+            Thread { runCatching { RootfsInstaller.ensureInstalled(installer(), open, "1") { _: Int -> } }.onFailure { e: Throwable -> errors += e } }
+        }
+        threads.forEach { it.start() }
+        Thread.sleep(300)
+        release.countDown()
+        threads.forEach { it.join(10_000) }
+
+        assertEquals(emptyList(), errors)
+        assertEquals(1, opens.get())
+        assertEquals("1", installer().installedVersion())
+    }
+
+    @Test
     fun rejectsManifestVersionMismatch() {
         val data = tar(E.Reg("a", "1"), manifest("1"))
         assertFailsWith<IOException> { installer().install({ ByteArrayInputStream(data) }, "2") {} }
@@ -231,6 +285,8 @@ internal class RecordingFileOps : FileOps {
 
     override fun deleteRecursively(f: File) {
         val prefix = f.canonicalPath
+        // POSIX semantics: a read-only file in a writable directory can still be deleted (Windows refuses).
+        f.walkTopDown().forEach { it.setWritable(true) }
         f.deleteRecursively()
         listOf(modes, symlinks, hardlinks).forEach { m -> m.keys.removeAll { it.startsWith(prefix) } }
     }

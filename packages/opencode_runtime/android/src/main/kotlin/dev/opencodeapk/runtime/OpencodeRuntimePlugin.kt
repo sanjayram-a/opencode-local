@@ -98,16 +98,13 @@ class OpencodeRuntimePlugin : FlutterPlugin, MethodChannel.MethodCallHandler {
                 try {
                     val abi = Build.SUPPORTED_ABIS.first()
                     val bundled = context.assets.open("rootfs/rootfs.version").bufferedReader().readText().trim()
-                    val installer = RootfsInstaller(paths, AndroidFileOps())
-                    installer.recover()
-                    if (installer.installedVersion() != bundled) {
-                        installer.install(
-                            openTar = {
-                                ZstdInputStream(BufferedInputStream(context.assets.open("rootfs/rootfs-$abi.tar.zst"), 1 shl 20))
-                            },
-                            bundledVersion = bundled,
-                        ) { n -> if (n % 100 == 0) main.post { events.success(n) } }
-                    }
+                    RootfsInstaller.ensureInstalled(
+                        RootfsInstaller(paths, AndroidFileOps()),
+                        openTar = {
+                            ZstdInputStream(BufferedInputStream(context.assets.open("rootfs/rootfs-$abi.tar.zst"), 1 shl 20))
+                        },
+                        bundledVersion = bundled,
+                    ) { n -> if (n % 100 == 0) main.post { events.success(n) } }
                     main.post { events.endOfStream() }
                 } catch (e: Exception) {
                     main.post { events.error(e.javaClass.simpleName, e.message, null) }

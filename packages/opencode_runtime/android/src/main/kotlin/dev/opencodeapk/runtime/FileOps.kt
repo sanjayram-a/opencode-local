@@ -22,12 +22,13 @@ interface FileOps {
 class AndroidFileOps : FileOps {
     override fun writeFile(dst: File, input: InputStream, mode: Int) {
         dst.parentFile?.mkdirs()
-        if (isSymlink(dst)) dst.delete()
+        if (isSymlink(dst) || dst.exists()) dst.delete() // never open (and truncate) through a link or a read-only file
         dst.outputStream().use { input.copyTo(it, 64 * 1024) }
         Os.chmod(dst.path, mode)
     }
 
     override fun mkdir(dir: File, mode: Int) {
+        if (isSymlink(dir)) throw SecurityException("refusing to chmod through symlink $dir")
         dir.mkdirs()
         Os.chmod(dir.path, mode or 0b111_000_000) // the app must always be able to enter its own dirs
     }

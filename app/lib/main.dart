@@ -7,6 +7,8 @@ import 'package:flutter/services.dart';
 import 'package:opencode_runtime/opencode_runtime.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 
+import 'server_guard.dart';
+
 void main() => runApp(const SpikeApp());
 
 class SpikeApp extends StatelessWidget {
@@ -98,8 +100,10 @@ class _SpikeScreenState extends State<SpikeScreen> {
           ..setJavaScriptMode(JavaScriptMode.unrestricted)
           ..setNavigationDelegate(NavigationDelegate(
             // The server answers 401 with a Basic challenge; answering it lets every request carry the password.
-            onHttpAuthRequest: (req) => req.onProceed(WebViewCredential(user: 'opencode', password: s.password)),
-            onNavigationRequest: (req) => Uri.parse(req.url).host == '127.0.0.1'
+            onHttpAuthRequest: (req) => shouldAnswerAuth(host: req.host, realm: req.realm)
+                ? req.onProceed(WebViewCredential(user: 'opencode', password: s.password))
+                : req.onCancel(),
+            onNavigationRequest: (req) => isOwnServer(Uri.parse(req.url), s.port)
                 ? NavigationDecision.navigate
                 : NavigationDecision.prevent,
           ))

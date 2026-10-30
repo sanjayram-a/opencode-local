@@ -52,6 +52,7 @@ class ServerSupervisor(
     fun start(extraEnv: Map<String, String>): ServerInfo {
         stop()
         listOf(paths.home, paths.tmp, paths.prootTmp).forEach { it.mkdirs() }
+        var portRetries = 0
         while (true) {
             val port = freePort()
             val password = randomPassword()
@@ -62,8 +63,9 @@ class ServerSupervisor(
             )
             log.add("[supervisor] starting on port $port" + if (noSeccomp) " (PROOT_NO_SECCOMP=1)" else "")
             val startedAt = clock.now()
+            val attemptLog = RingLog(200)
             val proc = spawner.spawn(argv, env, paths.filesDir)
-            val reader = startPump(proc)
+            val reader = startPump(proc, attemptLog)
 
             val deadline = clock.now() + startTimeoutMs
             var delay = 100L
@@ -86,6 +88,10 @@ class ServerSupervisor(
             }
             reader.join(2000)
             log.add("[supervisor] server exited early with code ${proc.exitCode()}")
+            if (PORT_IN_USE.containsMatchIn(attemptLog.tail()) && portRetries < MAX_PORT_RETRIES) {
+                portRetries++ // lost the race for the port between picking and binding it: just pick another
+                continue
+            }
             if (noSeccomp) throw ServerStartException("server exited with code ${proc.exitCode()}", log.tail(50))
             noSeccomp = true
         }
@@ -102,9 +108,9 @@ class ServerSupervisor(
     @Synchronized
     fun isRunning(): Boolean = current?.isAlive() == true
 
-    private fun startPump(proc: Proc): Thread = Thread({
+    private fun startPump(proc: Proc, attemptLog: RingLog): Thread = Thread({
         try {
-            proc.stdout.bufferedReader().forEachLine { log.add(it) }
+            proc.stdout.bufferedReader().forEachLine { log.add(it); attemptLog.add(it) }
         } catch (_: Exception) {
             // stream closed when the process is destroyed
         }
@@ -112,6 +118,8 @@ class ServerSupervisor(
 
     companion object {
         private val random = SecureRandom()
+        private val PORT_IN_USE = Regex("EADDRINUSE|address already in use", RegexOption.IGNORE_CASE)
+        private const val MAX_PORT_RETRIES = 3
 
         private fun randomPassword(): String {
             val bytes = ByteArray(18) // 18 bytes -> 24 base64 chars, no padding
@@ -121,7 +129,10 @@ class ServerSupervisor(
 
         fun pickFreePort(): Int = ServerSocket(0).use { it.localPort }
 
-        /** Healthy = the server answers HTTP below 500 with our credentials. */
+        /**
+         * Healthy = the server accepts OUR password (2xx). A 401 means some other listener, or the wrong
+         * password, so it does not count.
+         */
         fun httpProbe(port: Int, password: String): Boolean = try {
             val conn = URL("http://127.0.0.1:$port/").openConnection() as HttpURLConnection
             conn.connectTimeout = 1000
@@ -129,7 +140,7 @@ class ServerSupervisor(
             val token = Base64.getEncoder().encodeToString("opencode:$password".toByteArray())
             conn.setRequestProperty("Authorization", "Basic $token")
             try {
-                conn.responseCode in 1..499
+                conn.responseCode in 200..299
             } finally {
                 conn.disconnect()
             }

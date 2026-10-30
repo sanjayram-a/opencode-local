@@ -134,6 +134,47 @@ internal class ServerSupervisorTest {
     }
 
     @Test
+    fun portInUseRetriesNewPortWithoutNoSeccomp() {
+        val clock = FakeClock()
+        val spawner = FakeSpawner { i ->
+            if (i < 2) FakeProc("error: listen EADDRINUSE: address already in use\n", clock, exitAt = clock.t)
+            else FakeProc("", clock, exitAt = null)
+        }
+        val info = supervisor(spawner, clock, healthyAfter = 0).start(emptyMap())
+
+        assertEquals(3, spawner.spawns.size)
+        assertTrue(spawner.spawns.none { it.env.containsKey("PROOT_NO_SECCOMP") })
+        assertEquals(4102, info.port)
+    }
+
+    @Test
+    fun httpProbeRequiresSuccessWithOurPassword() {
+        // Minimal HTTP server: 200 only for the right Basic credentials, 401 otherwise (like opencode serve).
+        val expected = "Basic " + java.util.Base64.getEncoder().encodeToString("opencode:right".toByteArray())
+        val server = java.net.ServerSocket(0, 50, java.net.InetAddress.getByName("127.0.0.1"))
+        val t = Thread {
+            while (!server.isClosed) {
+                val s = runCatching { server.accept() }.getOrNull() ?: break
+                s.use {
+                    val headers = it.getInputStream().bufferedReader().let { r ->
+                        generateSequence { r.readLine() }.takeWhile { l -> l.isNotEmpty() }.toList()
+                    }
+                    val ok = headers.any { h -> h.equals("Authorization: $expected", ignoreCase = true) }
+                    val status = if (ok) "200 OK" else "401 Unauthorized"
+                    it.getOutputStream().write("HTTP/1.1 $status\r\nContent-Length: 0\r\nConnection: close\r\n\r\n".toByteArray())
+                }
+            }
+        }.apply { isDaemon = true; start() }
+        try {
+            assertTrue(ServerSupervisor.httpProbe(server.localPort, "right"))
+            assertFalse(ServerSupervisor.httpProbe(server.localPort, "wrong"))
+        } finally {
+            server.close()
+            t.join(2000)
+        }
+    }
+
+    @Test
     fun logsTimeToHealthy() {
         val clock = FakeClock()
         val sup = supervisor(FakeSpawner { FakeProc("", clock, exitAt = null) }, clock, healthyAfter = 700)

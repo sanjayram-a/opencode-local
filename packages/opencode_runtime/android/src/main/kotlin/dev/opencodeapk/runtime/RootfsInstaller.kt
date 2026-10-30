@@ -54,13 +54,24 @@ class RootfsInstaller(private val paths: Paths, private val ops: FileOps) {
                         val dst = File(target, rel)
                         requireNoSymlinkParent(target, dst)
                         val mode = entry.mode and PERMISSION_BITS
-                        when {
-                            entry.isDirectory -> ops.mkdir(dst, mode)
-                            entry.isSymbolicLink -> ops.symlink(entry.linkName, dst)
-                            entry.isLink -> ops.hardlink(File(target, safeRelative(entry.linkName)), dst)
-                            entry.isFile -> ops.writeFile(dst, tar, mode)
-                            else -> Unit // devices, fifos: proot binds the host /dev instead
-                        }
+                        if (entry.isDirectory) {
+                            // mkdir/chmod on an existing symlink would act on whatever it points to.
+                            if (ops.isSymlink(dst)) throw SecurityException("directory ${entry.name} replaces a symlink")
+                            ops.mkdir(dst, mode)
+                        } else if (entry.isSymbolicLink || entry.isLink || entry.isFile) {
+                            // Never write through what is already there (a link, or a read-only file left by a kill
+                            // just before its progress was recorded): remove it first.
+                            if (ops.isSymlink(dst) || dst.exists()) ops.deleteRecursively(dst)
+                            when {
+                                entry.isSymbolicLink -> ops.symlink(entry.linkName, dst)
+                                entry.isLink -> {
+                                    val existing = File(target, safeRelative(entry.linkName))
+                                    requireNoSymlinkParent(target, existing) // link() would follow it on the host
+                                    ops.hardlink(existing, dst)
+                                }
+                                else -> ops.writeFile(dst, tar, mode)
+                            }
+                        } // devices, fifos: proot binds the host /dev instead
                     }
                     index++
                     paths.progressFile.writeText(index.toString())
@@ -107,6 +118,25 @@ class RootfsInstaller(private val paths: Paths, private val ops: FileOps) {
     }
 
     companion object {
+        /** One install at a time per process, even across Flutter engines/plugin instances. */
+        private val installLock = Any()
+
+        /**
+         * Installs [bundledVersion] unless it is already the active rootfs. Concurrent callers wait for the one
+         * in progress and then find it installed. Returns true when this call extracted the rootfs.
+         */
+        fun ensureInstalled(
+            installer: RootfsInstaller,
+            openTar: () -> InputStream,
+            bundledVersion: String,
+            onProgress: (entriesDone: Int) -> Unit,
+        ): Boolean = synchronized(installLock) {
+            installer.recover()
+            if (installer.installedVersion() == bundledVersion) return false
+            installer.install(openTar, bundledVersion, onProgress)
+            true
+        }
+
         const val MANIFEST = ".manifest.json"
         private const val PERMISSION_BITS = 0b111_111_111
         private val VERSION = Regex("\"version\"\\s*:\\s*\"([^\"]+)\"")
