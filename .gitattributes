@@ -1,0 +1,5 @@
+* text=auto
+*.sh text eol=lf
+*.env text eol=lf
+*.so binary
+*.zst binary
