@@ -1,3 +1,7 @@
+# Internal research documents, not for public distribution
+/hermes-rea-report-v2.pdf
+/linux-agent-app-guide-v2.md
+
 .superpowers/
 .dart_tool/
 build/

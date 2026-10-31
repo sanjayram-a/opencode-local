@@ -1,11 +1,13 @@
 # Plan: "OpenCode on Android" — Flutter app running `opencode serve` inside an Alpine + proot sandbox
 
 ## Context
-`E:\opencodeapk\linux-agent-app-guide-v2.md` explains how apps on Google Play ship a Linux environment inside the app sandbox, with no root and within Play policy. We want to use that approach for one product: an Android app that runs the **OpenCode server** on the phone, alongside **npm/Node, Python, common CLI tools and a lightweight Linux userland**, and opens it in an app UI.
+This project runs the **OpenCode server** on the phone inside an Alpine + proot sandbox, alongside **npm/Node, Python, common CLI tools and a lightweight Linux userland**, and opens it in an app UI.
+
+> Note: the internal Play policy research guide and Hermes report referenced in this design are not part of this public repository. References to “guide §” below are historical notes from that internal research.
 
 Decisions made with the user:
-- **Distribution:** Google Play. Follow every rule in guide §2 and §10.
-- **Linux env:** Alpine (musl) + proot. This is guide Blueprint A combined with §14.
+- **Distribution:** Google Play. Follow Google Play's device/network abuse and interpreted-code policies.
+- **Linux env:** Alpine (musl) + proot.
 - **UI:** a native app that hosts OpenCode's own web UI in a WebView, plus a built-in terminal, plus an optional LAN mode so a laptop can connect.
 - **App stack:** Flutter for the UI. Kotlin underneath for processes, PTY, extraction and the foreground service.
 
@@ -13,7 +15,7 @@ Facts checked:
 - OpenCode publishes a `linux-arm64-musl` binary. The glibc build cannot run on bare Android because `/lib/ld-linux-aarch64.so.1` is missing. An existing unofficial app (yuga-hashimoto/opencode-android) already runs Alpine + the OpenCode musl binary under proot, so the approach has been shown to work.
 - `opencode serve --hostname --port`: the default is 127.0.0.1:4096. `OPENCODE_SERVER_PASSWORD` turns on HTTP basic auth (the user is `opencode`). The v2 docs differ a little (they mention port 49374 and `opencode pair`), so pin the OpenCode version and check its flags.
 
-The project directory is currently empty (greenfield). The only existing material is the guide.
+This is a greenfield project.
 
 ---
 
