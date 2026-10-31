@@ -1,7 +1,7 @@
 # proot binaries — sources
 
 Fetched by `native/proot/fetch.sh` from the Termux apt repo (https://packages.termux.dev/apt/termux-main).
-proot is GPL-2.0 (source: https://github.com/termux/proot); talloc is LGPL-3.0 (source: https://www.samba.org/ftp/talloc/).
+proot is GPL-2.0-or-later (source: https://github.com/termux/proot); talloc upstream is LGPL-3.0-or-later (source: https://www.samba.org/ftp/talloc/), but the Termux package metadata lists GPL-3.0. Treat the shipped talloc as GPL-3.0 until this discrepancy is reconciled.
 Build recipes: https://github.com/termux/termux-packages/tree/master/packages/{proot,libtalloc}
 
 - arm64-v8a: `proot` 5.1.107.101 — https://packages.termux.dev/apt/termux-main/pool/main/p/proot/proot_5.1.107.101_aarch64.deb (sha256 a28355e9be257e1f87f4e9294b3118470d4fd7a5442fed8b278f4443c83407d7)

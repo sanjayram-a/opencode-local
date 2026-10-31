@@ -29,7 +29,7 @@ field() {
   echo "# proot binaries — sources"
   echo
   echo "Fetched by \`native/proot/fetch.sh\` from the Termux apt repo ($REPO)."
-  echo "proot is GPL-2.0 (source: https://github.com/termux/proot); talloc is LGPL-3.0 (source: https://www.samba.org/ftp/talloc/)."
+  echo "proot is GPL-2.0-or-later (source: https://github.com/termux/proot); talloc upstream is LGPL-3.0-or-later (source: https://www.samba.org/ftp/talloc/), but the Termux package metadata lists GPL-3.0. Treat the shipped talloc as GPL-3.0 until this discrepancy is reconciled."
   echo "Build recipes: https://github.com/termux/termux-packages/tree/master/packages/{proot,libtalloc}"
   echo
 } > "$HERE/SOURCES.md"
